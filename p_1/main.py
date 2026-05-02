@@ -3,7 +3,10 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from src.data.data_loader import download_prices
-from src.preprocessing.returns import compute_log_returns
+from src.preprocessing.returns import (
+    compute_simple_returns,
+    compute_log_returns,
+)
 from src.statistics.descriptive_stats import compute_return_statistics
 
 from src.risk_metrics.var_es import compute_full_sample_var_es
@@ -48,7 +51,11 @@ def make_price_plot(prices: pd.Series, ticker: str):
     return fig
 
 
-def make_returns_plot(returns: pd.Series, ticker: str):
+def make_returns_plot(
+    returns: pd.Series,
+    ticker: str,
+    return_type_label: str,
+):
     fig = go.Figure()
 
     fig.add_trace(
@@ -56,14 +63,14 @@ def make_returns_plot(returns: pd.Series, ticker: str):
             x=returns.index,
             y=returns.values,
             mode="lines",
-            name="Rendimientos logarítmicos",
+            name=return_type_label,
         )
     )
 
     fig.update_layout(
-        title=f"Rendimientos logarítmicos diarios: {ticker}",
+        title=f"{return_type_label} diarios: {ticker}",
         xaxis_title="Fecha",
-        yaxis_title="Rendimiento logarítmico",
+        yaxis_title="Rendimiento",
         hovermode="x unified",
     )
 
@@ -156,9 +163,9 @@ st.subheader("VaR y ES para un activo financiero")
 st.write(
     """
     Esta aplicación descarga información financiera desde Yahoo Finance,
-    calcula rendimientos logarítmicos diarios, estima VaR y ES mediante
-    diferentes métodos, realiza estimaciones con rolling window y cuenta
-    violaciones.
+    calcula rendimientos simples y logarítmicos diarios, estima VaR y ES
+    mediante diferentes métodos, realiza estimaciones con rolling window
+    y cuenta violaciones.
     """
 )
 
@@ -204,7 +211,11 @@ if run_analysis:
             end_date=str(end_date),
         )
 
-        returns = compute_log_returns(prices)
+        simple_returns = compute_simple_returns(prices)
+        log_returns = compute_log_returns(prices)
+
+        # For the risk analysis, we keep using log returns.
+        returns = log_returns
 
         if len(returns) <= window:
             st.error(
@@ -249,28 +260,70 @@ if run_analysis:
 
         st.write(
             """
-            Los rendimientos diarios se calculan como rendimientos logarítmicos:
+            Se calculan dos tipos de rendimientos diarios:
 
-            r_t = log(S_t) - log(S_{t-1}).
+            - Rendimiento simple: R_t = (S_t - S_{t-1}) / S_{t-1}.
+            - Rendimiento logarítmico: r_t = log(S_t) - log(S_{t-1}).
+
+            Para las estimaciones de VaR y ES se usan los rendimientos logarítmicos,
+            porque son la convención principal usada en el análisis de la aplicación.
             """
         )
 
-        st.plotly_chart(
-            make_returns_plot(returns, ticker),
-            width="stretch",
+        tab_simple_returns, tab_log_returns = st.tabs(
+            ["Rendimientos simples", "Rendimientos logarítmicos"]
         )
 
-        statistics_table = compute_return_statistics(returns)
+        with tab_simple_returns:
+            st.plotly_chart(
+                make_returns_plot(
+                    simple_returns,
+                    ticker,
+                    "Rendimientos simples",
+                ),
+                width="stretch",
+            )
 
-        st.subheader("Media, sesgo y exceso de curtosis")
+            simple_statistics_table = compute_return_statistics(simple_returns)
 
-        st.dataframe(
-            statistics_table.round(8),
-            width="stretch",
-        )
+            st.subheader("Estadísticos de rendimientos simples")
+
+            st.dataframe(
+                simple_statistics_table.round(8),
+                width="stretch",
+            )
+
+        with tab_log_returns:
+            st.plotly_chart(
+                make_returns_plot(
+                    log_returns,
+                    ticker,
+                    "Rendimientos logarítmicos",
+                ),
+                width="stretch",
+            )
+
+            log_statistics_table = compute_return_statistics(log_returns)
+
+            st.subheader("Estadísticos de rendimientos logarítmicos")
+
+            st.dataframe(
+                log_statistics_table.round(8),
+                width="stretch",
+            )
 
         with st.expander("Ver rendimientos diarios"):
-            st.dataframe(returns.to_frame(name="Rendimiento logarítmico"))
+            returns_table = pd.DataFrame(
+                {
+                    "Rendimiento simple": simple_returns,
+                    "Rendimiento logarítmico": log_returns,
+                }
+            )
+
+            st.dataframe(
+                returns_table,
+                width="stretch",
+            )
 
         # ------------------------------------------------------------
         # (c) Full-sample VaR and ES
@@ -441,25 +494,6 @@ if run_analysis:
         with st.expander("Ver resultados de volatilidad móvil"):
             st.dataframe(moving_vol_results)
 
-        # ------------------------------------------------------------
-        # Final interpretation
-        # ------------------------------------------------------------
-        st.header("Conclusiones")
-
-        st.write(
-            """
-            El análisis permite comparar diferentes métodos de estimación de riesgo.
-            En general, las diferencias entre VaR, ES, métodos históricos, métodos
-            paramétricos y volatilidad móvil reflejan que la estimación del riesgo
-            depende fuertemente de la distribución asumida y de la ventana temporal
-            utilizada.
-
-            Las tablas de violaciones permiten evaluar empíricamente si los umbrales
-            de riesgo fueron suficientemente conservadores para el activo seleccionado.
-            Una estimación con menos violaciones suele interpretarse como más
-            conservadora, aunque también puede producir umbrales demasiado extremos.
-            """
-        )
 
     except Exception as error:
         st.error("Ocurrió un error durante la ejecución del análisis.")
