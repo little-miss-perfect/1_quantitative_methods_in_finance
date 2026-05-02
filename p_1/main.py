@@ -2,14 +2,16 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 
-from functions import (
-    download_prices,
-    compute_log_returns,
-    compute_return_statistics,
-    compute_full_sample_var_es,
-    compute_rolling_var_es,
+from src.data.data_loader import download_prices
+from src.preprocessing.returns import compute_log_returns
+from src.statistics.descriptive_stats import compute_return_statistics
+
+from src.risk_metrics.var_es import compute_full_sample_var_es
+from src.risk_metrics.rolling import compute_rolling_var_es
+from src.risk_metrics.moving_volatility import compute_moving_volatility_var
+
+from src.backtesting.violations import (
     compute_violations,
-    compute_moving_volatility_var,
     compute_moving_volatility_violations,
 )
 
